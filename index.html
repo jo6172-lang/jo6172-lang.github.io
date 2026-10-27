@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta name="robots" content="noindex, nofollow, noarchive">
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>공방 집 3D 시안</title>
+<!-- 블록 탈출 공방 — 3D 집 시안(10/27). 단독주택: 안방·작은방·거실·주방·화장실·드레스룸 + 마당. 인형의 집 보기(지붕 없음, 카메라 쪽 벽은 낮춤).
+     ★그림체 B안 확정(대표 2026-10-27) — 코드로 빚은 파스텔 가구 단독본입니다.
+     A안(공개 3D 묶음 Kenney, CC0)의 코드는 지우지 않고 이 파일 안 "보존: 시안 A" 주석 블록과
+     house-3d-sian-AB-backup.html(A/B 비교본 원본)에 그대로 남겨 두었습니다.
+     B안은 외부 3D 파일(house-assets.js, 1MB)이 필요 없어 이 HTML 한 장으로 돕니다. -->
+<style>
+:root{--ink:#2b2622;--panel:rgba(255,252,246,.92);--line:#e4d8c6;--acc:#c0703f;--sky1:#dcecf3;--sky2:#f6efe2}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--sky2);font-family:'Gowun Dodum','Malgun Gothic','Apple SD Gothic Neo',sans-serif;color:var(--ink);-webkit-tap-highlight-color:transparent}
+#c{position:fixed;inset:0;display:block;touch-action:none}
+/* 휴대폰 세로 화면 재제작(10/27): 위아래 띠를 최대한 얇게 눌러 그 사이를 집이 꽉 채웁니다.
+   제목과 안내를 한 줄에 나란히 두어 위 띠를 한 줄 높이로 유지합니다(안내가 사라져도 집이 흔들리지 않음). */
+.top{position:fixed;z-index:5;top:0;left:0;right:0;display:flex;align-items:center;gap:6px;padding:5px 8px 2px;pointer-events:none}
+.top>*{pointer-events:auto}
+.title{flex:none;font-weight:700;font-size:16px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:5px 10px}
+.sp{flex:1}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:11px;padding:6px 10px;font-size:15px;cursor:pointer}
+button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.seg{display:flex;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.seg button{border:0;border-radius:0}
+/* 방 버튼 8개는 가로로 쓸지 않고 두 줄로 접어 전부 한눈에 보이게 합니다(가로 스크롤 없음) */
+.rooms{position:fixed;z-index:5;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;justify-content:center;gap:4px;padding:4px 6px calc(4px + env(safe-area-inset-bottom));overflow:visible}
+.rooms button{flex:none;font-size:15px;padding:5px 9px;border-radius:10px}
+#all{font-weight:700}
+.lbl{position:fixed;z-index:1;left:0;top:0;transform:translate(-50%,-50%);background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:10px;padding:3px 9px;font-size:15px;font-weight:600;white-space:nowrap;pointer-events:auto;cursor:pointer;transition:opacity .2s}
+.lbl.hide{opacity:0;pointer-events:none}
+#msg{position:fixed;inset:0;display:grid;place-items:center;font-size:16px;background:var(--sky2)}
+/* 안내 문구: 제목 오른쪽 한 줄. 자리가 좁으면 말줄임으로 줄어들 뿐 줄이 늘지 않아 집을 가리지 않습니다 */
+.hint{flex:1;min-width:0;font-size:14px;line-height:1.2;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:5px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .6s}
+@media (max-width:400px){.hint{font-size:13px;padding:4px 7px}.title{font-size:15px;padding:4px 9px}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<!-- A안 전용 3D 묶음(house-assets.js, 1MB)은 B안 확정으로 불러오지 않습니다. 파일 자체는 보존합니다. -->
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="top">
+  <span class="title">우리 공방 집</span>
+  <div class="hint" id="hint">돌리기·확대·이름표 터치</div>
+</div>
+<div class="rooms" id="rooms"><button id="all" class="on">전체보기</button></div>
+<div id="msg">집을 짓는 중입니다…</div>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+/* A안 전용: import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'; (B안 확정으로 미사용) */
+import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+/* ---------- 무대 ---------- */
+const cv=document.getElementById('c');
+const R=new THREE.WebGLRenderer({canvas:cv,antialias:true,preserveDrawingBuffer:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2));R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;
+R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.05;
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(38,1,0.1,900);
+const ctl=new OrbitControls(cam,cv);
+ctl.enableDamping=true;ctl.dampingFactor=.09;ctl.minDistance=4;ctl.maxDistance=66;ctl.minPolarAngle=.25;ctl.maxPolarAngle=1.2;ctl.screenSpacePanning=false;
+
+const hemi=new THREE.HemisphereLight(0xf3f8ff,0xb79a78,1.1);scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xfff1dc,2.1);sun.position.set(-8,18,14);sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-12,right:12,top:12,bottom:-12,near:1,far:60});
+sun.shadow.bias=-.0004;sun.shadow.normalBias=.02;sun.target.position.set(6,0,7.5);scene.add(sun,sun.target);
+
+/* 하늘: 위아래 두 색.
+   망원으로 멀리서 볼 때(카메라 거리가 100m를 넘김) 카메라가 하늘 밖으로 나가 배경이 검게
+   비던 문제가 있어, 하늘 구체를 넉넉히 키웠습니다(2026-10-27). */
+{const g=new THREE.SphereGeometry(400,24,12);const m=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,
+  uniforms:{a:{value:new THREE.Color(0xcfe6f1)},b:{value:new THREE.Color(0xf7efe1)}},
+  vertexShader:'varying float h;void main(){h=normalize(position).y;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+  fragmentShader:'uniform vec3 a,b;varying float h;void main(){gl_FragColor=vec4(mix(b,a,smoothstep(-.05,.5,h)),1.);}'});
+ scene.add(new THREE.Mesh(g,m));}
+
+/* ---------- 재질 ---------- */
+const M=(c,o={})=>new THREE.MeshStandardMaterial({color:c,roughness:.85,metalness:0,...o});
+function tileTex(base,line,n){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');
+  x.fillStyle=base;x.fillRect(0,0,128,128);x.strokeStyle=line;x.lineWidth=3;for(let i=0;i<=n;i++){const p=i*128/n;x.beginPath();x.moveTo(p,0);x.lineTo(p,128);x.moveTo(0,p);x.lineTo(128,p);x.stroke();}
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;return t;}
+function woodTex(base,line){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');
+  x.fillStyle=base;x.fillRect(0,0,128,128);x.fillStyle=line;for(let i=0;i<8;i++){x.fillRect(0,i*16,128,1.5);x.fillRect(((i*37)%128),i*16,1.5,16);}
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;return t;}
+
+/* ---------- 평면도(미터) : x 0~12 왼→오, z 0~9 뒤→앞(마당 쪽), 마당 z 9~15.5 ---------- */
+const H=2.5,T=.14;
+const ROOMS=[
+ {id:'master',n:'안방',x0:0,z0:0,x1:4.2,z1:4.2,floor:'wood1'},
+ {id:'dress',n:'드레스룸',x0:4.2,z0:0,x1:6.2,z1:4.2,floor:'wood2'},
+ {id:'bath',n:'화장실',x0:6.2,z0:0,x1:8.4,z1:4.2,floor:'tile1'},
+ {id:'small',n:'작은방',x0:8.4,z0:0,x1:12,z1:4.2,floor:'wood2'},
+ {id:'living',n:'거실',x0:0,z0:4.2,x1:7,z1:9,floor:'wood1'},
+ {id:'kitchen',n:'주방',x0:7,z0:4.2,x1:12,z1:9,floor:'tile2'},
+ {id:'yard',n:'마당',x0:-2.6,z0:9,x1:14.6,z1:15.6,floor:null}];
+/* 벽: [x0,z0,x1,z1, 구멍들(a0,a1,종류)] — a는 벽 시작점에서 잰 거리 */
+const WALLS=[
+ [0,0,12,0,[[1.2,2.4,'win'],[9.6,10.8,'win']]],                // 뒷벽
+ [0,0,0,9,[[1.4,2.8,'win']]],                                    // 왼벽
+ [12,0,12,9,[[1.6,2.8,'win']]],                                  // 오른벽
+ [0,9,12,9,[[1.0,2.0,'door'],[3.4,6.0,'glass'],[9.2,10.8,'win']]],// 앞벽(현관·거실 유리문·주방 창)
+ [0,4.2,12,4.2,[[2.6,3.5,'open'],[6.8,7.6,'open'],[9.0,9.9,'open']]], // 뒷줄 방들과 앞 공간 사이
+ [4.2,0,4.2,4.2,[[1.2,2.1,'open']]],                             // 안방↔드레스룸
+ [6.2,0,6.2,4.2,[]],[8.4,0,8.4,4.2,[]]];
+
+const world=new THREE.Group();scene.add(world);
+const furn=new THREE.Group();world.add(furn);
+const FLOORS={wood1:null,wood2:null,tile1:null,tile2:null};
+function buildShell(){
+  const g=new THREE.Group();
+  const A=false;  /* B안 확정(10/27): 아래 A?x:y 는 모두 B안 값으로 고정됩니다. A안 색은 참고로 남깁니다 */
+  const wallM=M(A?0xf2ebdf:0xfbf3e6),capM=M(A?0x6b5848:0xd9a88a),outM=M(A?0xe6d8c4:0xf6e3d3);
+  FLOORS.wood1=M(0xffffff,{map:woodTex(A?'#c59a6b':'#e8c9a4',A?'#a77f55':'#d6b08a')});FLOORS.wood1.map.repeat.set(3,3);
+  FLOORS.wood2=M(0xffffff,{map:woodTex(A?'#d6b48c':'#f0dcc0',A?'#b8956c':'#dcc39f')});FLOORS.wood2.map.repeat.set(3,3);
+  FLOORS.tile1=M(0xffffff,{map:tileTex(A?'#d7e6ea':'#dff0f0',A?'#b8ccd2':'#c3dede',4)});FLOORS.tile1.map.repeat.set(3,3);
+  FLOORS.tile2=M(0xffffff,{map:tileTex(A?'#ebe3d6':'#f6ece0',A?'#cfc2b0':'#e2d2bf',4)});FLOORS.tile2.map.repeat.set(4,4);
+  /* 땅·잔디·집 받침. 멀리서 당겨 볼 때 잔디 끝이 화면 안에서 끊겨 보이지 않도록 넉넉히 깝니다 */
+  const grass=new THREE.Mesh(new THREE.BoxGeometry(70,.2,70),M(A?0x8cc063:0xa9d98a));grass.position.set(6,-.1,7.3);grass.receiveShadow=true;g.add(grass);
+  const base=new THREE.Mesh(new THREE.BoxGeometry(12.3,.24,9.3),M(A?0xbfae96:0xe7d3bd));base.position.set(6,.12,4.5);base.receiveShadow=true;base.castShadow=true;g.add(base);
+  for(const r of ROOMS){if(!r.floor)continue;const f=new THREE.Mesh(new THREE.BoxGeometry(r.x1-r.x0,.02,r.z1-r.z0),FLOORS[r.floor]);
+    f.position.set((r.x0+r.x1)/2,.25,(r.z0+r.z1)/2);f.receiveShadow=true;g.add(f);}
+  /* 벽 */
+  const walls=[];
+  for(const [x0,z0,x1,z1,ops] of WALLS){
+    const L=Math.hypot(x1-x0,z1-z0),dx=(x1-x0)/L,dz=(z1-z0)/L,outer=(x0===x1&&(x0===0||x0===12))||(z0===z1&&(z0===0||z0===9));
+    const full=new THREE.Group(),low=new THREE.Group(),mid=new THREE.Group();
+    const mats=[outer?outM:wallM,outer?outM:wallM,capM,wallM,outer?outM:wallM,outer?outM:wallM];
+    const box=(a0,a1,y0,y1,grp,m=mats)=>{if(a1-a0<.01||y1-y0<.01)return;const len=a1-a0;
+      const geo=new THREE.BoxGeometry(dx?len+(a0===0||a1===L?T:0):T,y1-y0,dz?len+(a0===0||a1===L?T:0):T);
+      const mesh=new THREE.Mesh(geo,m);const c=(a0+a1)/2;mesh.position.set(x0+dx*c,.26+(y0+y1)/2,z0+dz*c);mesh.castShadow=true;mesh.receiveShadow=true;grp.add(mesh);};
+    let a=0;const sorted=[...ops].sort((p,q)=>p[0]-q[0]);
+    for(const [o0,o1,k] of sorted){box(a,o0,0,H,full);box(a,o0,0,.32,low);box(a,o0,0,1.0,mid);
+      if(k==='door'||k==='open'){box(o0,o1,2.1,H,full);}
+      if(k==='door'){const dm=M(A?0x8a5a3b:0xc98f6b);const d=new THREE.Mesh(new THREE.BoxGeometry(o1-o0,2.05,.05),dm);
+        const piv=new THREE.Group();piv.position.set(x0+dx*o0,.26,z0+dz*o0);d.position.set((o1-o0)/2,1.03,0);d.castShadow=true;piv.add(d);piv.rotation.y=-1.1;full.add(piv);}
+      if(k==='win'){box(o0,o1,0,.95,full);box(o0,o1,2.05,H,full);box(o0,o1,0,.32,low);box(o0,o1,0,.95,mid);glass(o0,o1,.95,2.05,full);}
+      if(k==='glass'){box(o0,o1,2.15,H,full);glass(o0,o1,0,2.15,full);}
+      a=o1;}
+    box(a,L,0,H,full);box(a,L,0,.32,low);box(a,L,0,1.0,mid);
+    function glass(o0,o1,y0,y1,grp){const gm=new THREE.MeshPhysicalMaterial({color:0xcfe9f5,transparent:true,opacity:.28,roughness:.05,metalness:0});
+      const c=(o0+o1)/2;const p=new THREE.Mesh(new THREE.BoxGeometry(dx?o1-o0:.03,y1-y0,dz?o1-o0:.03),gm);p.position.set(x0+dx*c,.26+(y0+y1)/2,z0+dz*c);grp.add(p);
+      const fm=M(A?0xffffff:0xfff8ee);const n=Math.max(1,Math.round((o1-o0)/.9));for(let i=0;i<=n;i++){const ai=o0+(o1-o0)*i/n;
+        const f=new THREE.Mesh(new THREE.BoxGeometry(dx?.05:.06,y1-y0,dz?.05:.06),fm);f.position.set(x0+dx*ai,.26+(y0+y1)/2,z0+dz*ai);grp.add(f);}}
+    low.visible=false;mid.visible=false;g.add(full,low,mid);
+    walls.push({full,low,mid,inner:!outer,cx:x0+dx*L/2,cz:z0+dz*L/2,st:''});
+  }
+  g.userData.walls=walls;return g;
+}
+
+/* ---------- 놓을 것들(두 시안 공통 자리) — r: 정면이 +z(마당 쪽)일 때 0, 도 단위 ---------- */
+const ITEMS=[
+ /* 거실 */
+ {t:'tvUnit',x:.45,z:6.6,r:90,w:1.6,d:.45,h:.5},{t:'tv',x:.4,z:6.6,r:90,y:.5,w:1.3,d:.1,h:.75},
+ {t:'sofa',x:4.1,z:6.6,r:-90,w:2.3,d:.95,h:.85},{t:'coffee',x:2.4,z:6.6,r:90,w:1.1,d:.6,h:.4},
+ {t:'rug',x:2.4,z:6.6,r:90,w:2.6,d:1.6},{t:'lamp',x:.45,z:5.0,r:0,h:1.6},{t:'plant',x:6.5,z:8.5,r:0,h:1.1},
+ {t:'bookcase',x:5.6,z:4.55,r:0,w:1.0,d:.35,h:1.8},{t:'mat',x:1.5,z:8.6,r:0,w:.9,d:.5},
+ /* 주방 */
+ {t:'counter',x:11.6,z:5.0,r:-90,w:.6,d:.6,h:.9},{t:'sink',x:11.6,z:5.6,r:-90,w:.6,d:.6,h:.9},{t:'counterD',x:11.6,z:6.2,r:-90,w:.6,d:.6,h:.9},
+ {t:'stove',x:11.6,z:6.8,r:-90,w:.6,d:.6,h:.9},{t:'counter',x:11.6,z:7.4,r:-90,w:.6,d:.6,h:.9},{t:'fridge',x:11.55,z:8.35,r:-90,w:.85,d:.7,h:1.85},
+ {t:'upper',x:11.75,z:5.0,r:-90,y:1.45,w:.6,d:.35,h:.6},{t:'upper',x:11.75,z:5.6,r:-90,y:1.45,w:.6,d:.35,h:.6},{t:'hood',x:11.7,z:6.8,r:-90,y:1.5,w:.6,d:.45,h:.6},
+ {t:'upper',x:11.75,z:6.2,r:-90,y:1.45,w:.6,d:.35,h:.6},{t:'upper',x:11.75,z:7.4,r:-90,y:1.45,w:.6,d:.35,h:.6},{t:'micro',x:11.65,z:7.4,r:-90,y:.9,w:.45,d:.35,h:.28},
+ {t:'table',x:9.0,z:6.8,r:0,w:1.5,d:.9,h:.75},{t:'chair',x:8.6,z:6.15,r:0},{t:'chair',x:9.4,z:6.15,r:0},{t:'chair',x:8.6,z:7.45,r:180},{t:'chair',x:9.4,z:7.45,r:180},
+ /* 안방 */
+ {t:'bedD',x:2.0,z:1.2,r:0,w:1.7,d:2.1,h:.9},{t:'night',x:.65,z:.4,r:0,w:.45,d:.45,h:.5},{t:'night',x:3.35,z:.4,r:0,w:.45,d:.45,h:.5},
+ {t:'tlamp',x:.65,z:.4,r:0,y:.5,h:.4},{t:'tlamp',x:3.35,z:.4,r:0,y:.5,h:.4},{t:'rugR',x:2.0,z:2.9,r:0,w:2.2,d:1.3},{t:'plant',x:3.75,z:3.75,r:0,h:.9},
+ /* 드레스룸 */
+ {t:'ward',x:5.85,z:.65,r:-90,w:.9,d:.5,h:2.0},{t:'ward',x:5.85,z:1.6,r:-90,w:.9,d:.5,h:2.0},{t:'ward',x:5.85,z:2.55,r:-90,w:.9,d:.5,h:2.0},
+ {t:'drawers',x:4.9,z:.35,r:0,w:.8,d:.45,h:.6},{t:'coat',x:4.6,z:3.7,r:0,h:1.6},{t:'rugO',x:5.0,z:2.3,r:0,w:1.2,d:1.2},{t:'mirror',x:4.3,z:3.0,r:90,y:.3,w:.6,d:.06,h:1.5},
+ /* 화장실 */
+ {t:'tub',x:7.3,z:.5,r:0,w:1.7,d:.8,h:.55},{t:'toilet',x:8.0,z:2.0,r:-90,h:.75},{t:'basin',x:6.55,z:2.2,r:90,w:.55,d:.45,h:.9},
+ {t:'mirror',x:6.28,z:2.2,r:90,y:1.1,w:.55,d:.04,h:.75},{t:'washer',x:6.6,z:3.5,r:90,w:.6,d:.6,h:.85},
+ /* 작은방 */
+ {t:'bedS',x:11.4,z:1.2,r:0,w:1.0,d:2.0,h:.8},{t:'desk',x:8.8,z:1.3,r:90,w:1.2,d:.6,h:.75},{t:'dchair',x:9.45,z:1.3,r:-90,h:.9},
+ {t:'bookcase2',x:8.7,z:3.0,r:90,w:.8,d:.35,h:1.7},{t:'rugS',x:10.3,z:2.5,r:0,w:1.4,d:1.4},{t:'plant',x:11.6,z:3.8,r:0,h:.7},
+ /* 마당 */
+ {t:'deck',x:4.7,z:9.75,r:0,w:3.2,d:1.4,h:.22},
+ {t:'treeA',x:-1.4,z:11.2,r:0,h:4.2},{t:'treeB',x:13.4,z:10.6,r:0,h:4.6},{t:'treeC',x:12.6,z:14.4,r:30,h:3.0},{t:'treeA',x:-1.6,z:14.6,r:60,h:3.4},
+ {t:'bench',x:9.6,z:13.6,r:180,w:1.6,d:.5,h:.5},{t:'pot',x:.4,z:9.6,r:0,h:.5},{t:'pot',x:2.6,z:9.6,r:0,h:.5},
+ {t:'rock',x:7.4,z:14.6,r:0,h:.35},{t:'rock',x:13.6,z:12.8,r:40,h:.3}];
+/* 꽃밭·덤불·울타리·디딤돌은 반복이라 계산으로 */
+for(let i=0;i<9;i++)ITEMS.push({t:['flowerR','flowerY','flowerP'][i%3],x:8.0+i*.42,z:10.2+(i%2)*.35,r:i*40,h:.35});
+for(let i=0;i<5;i++)ITEMS.push({t:'bush',x:6.6+i*.0+(i>2?0:0)+i*.0,z:0,r:0,h:0,skip:true});
+[[7.2,9.55],[11.2,9.55],[-.4,9.6],[12.4,9.6],[3.9,15.0],[6.2,15.0]].forEach(([x,z],i)=>ITEMS.push({t:'bush',x,z,r:i*50,h:.55}));
+for(let i=0;i<6;i++)ITEMS.push({t:'step',x:1.5,z:9.7+i*.95,r:i%2?8:-6,w:.8,d:.55});
+{const fx0=-2.5,fx1=14.5,fz=15.5,fzs=9.2;
+ for(let x=fx0+.5;x<fx1;x+=1){if(Math.abs(x-1.5)<.6){ITEMS.push({t:'gate',x,z:fz,r:0,w:1,h:.9});continue;}ITEMS.push({t:'fence',x,z:fz,r:0,w:1,h:.7});}
+ for(let z=fzs+.5;z<fz;z+=1){ITEMS.push({t:'fence',x:fx0,z,r:90,w:1,h:.7});ITEMS.push({t:'fence',x:fx1,z,r:90,w:1,h:.7});}}
+
+/* ---------- 보존: 시안 A(공개 3D 묶음 Kenney, CC0) — 대표 10/27 B안 확정으로 미사용 ----------
+   아래는 A안 가구를 불러오던 코드 원본입니다. 되살리려면 각 줄의 앞 '// ' 를 지우고
+   house-assets.js 를 다시 불러오고 GLTFLoader import 를 되살리면 됩니다. ---------- */
+// /* ---------- 시안 A: 공개 3D 묶음(Kenney) ---------- */
+// const AMAP={tvUnit:'cabinetTelevision',tv:'televisionModern',sofa:'loungeSofaLong',coffee:'tableCoffee',rug:'rugRectangle',lamp:'lampRoundFloor',plant:'pottedPlant',
+//  bookcase:'bookcaseOpen',mat:'rugDoormat',counter:'kitchenCabinet',counterD:'kitchenCabinetDrawer',sink:'kitchenSink',stove:'kitchenStove',fridge:'kitchenFridgeLarge',
+//  upper:'kitchenCabinetUpper',hood:'hoodModern',micro:'kitchenMicrowave',table:'table',chair:'chair',bedD:'bedDouble',bedS:'bedSingle',night:'cabinetBedDrawerTable',
+//  tlamp:'lampRoundTable',rugR:'rugRounded',ward:'bookcaseClosedDoors',drawers:'sideTableDrawers',coat:'coatRackStanding',rugO:'rugRound',mirror:'bathroomMirror',
+//  tub:'bathtub',toilet:'toilet',basin:'bathroomSink',washer:'washer',desk:'desk',dchair:'chairDesk',bookcase2:'bookcaseClosed',rugS:'rugSquare',
+//  treeA:'tree_oak',treeB:'tree_default',treeC:'tree_fat',bench:'bench',pot:'pot_large',rock:'rock_smallA',flowerR:'flower_redA',flowerY:'flower_yellowA',
+//  flowerP:'flower_purpleA',bush:'plant_bushLarge',step:'path_stone',fence:'fence_simple',gate:'fence_gate'};
+// /* 크기 맞추기: h(높이) 또는 w(가로)를 기준으로 한 배율. 깔개는 가로·세로를 따로 맞춘다 */
+// const FLAT=new Set(['rug','rugR','rugO','rugS','mat','step']);
+// const gl=new GLTFLoader();const CACHE={};
+// function b64buf(s){const b=atob(s);const u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u.buffer;}
+// async function glb(name){if(!CACHE[name])CACHE[name]=new Promise((ok,no)=>gl.parse(b64buf(window.GLB[name]),'',g=>ok(g.scene),no));return (await CACHE[name]).clone(true);}
+// async function itemA(it){
+//   const name=AMAP[it.t];if(!name)return itemB(it);  /* 묶음에 없는 것(마루)은 B 방식으로 */const o=await glb(name);
+//   const box=new THREE.Box3().setFromObject(o),sz=box.getSize(new THREE.Vector3()),c=box.getCenter(new THREE.Vector3());
+//   const inner=new THREE.Group();o.position.set(-c.x,-box.min.y,-c.z);inner.add(o);
+//   if(FLAT.has(it.t))inner.scale.set(it.w/sz.x,1,it.d/sz.z);
+//   else{let s=it.h?it.h/sz.y:it.w/sz.x;if(it.t==='chair')s=.95/sz.y;inner.scale.setScalar(s);}
+//   /* 일부 모델은 금속 재질이라 주변 반사 없이는 검게 나온다 → 금속성 0 */
+//   o.traverse(m=>{if(m.isMesh){m.castShadow=!FLAT.has(it.t);m.receiveShadow=true;for(const mt of [].concat(m.material)){mt.metalness=0;mt.roughness=Math.max(mt.roughness,.6);}}});
+//   return inner;}
+
+/* ---------- 시안 B: 코드로 빚은 파스텔 가구 ---------- */
+const P={cream:0xfff6e8,peach:0xf6c6a8,coral:0xef9f86,mint:0xbfe3cf,sky:0xbfd9ee,butter:0xf8e3a3,lav:0xd9c9ef,wood:0xd9b48a,woodD:0xb98f68,white:0xfdfbf7,grey:0xcfd3d6,leaf:0x8fcf86,leafD:0x6cb46e,trunk:0xa9805e,stone:0xd8d2c8};
+const rb=(w,h,d,c,r=.06)=>{const m=new THREE.Mesh(new RoundedBoxGeometry(w,h,d,3,Math.min(r,w/2-.001,h/2-.001,d/2-.001)),M(c,{roughness:.9}));m.castShadow=true;m.receiveShadow=true;return m;};
+const at=(m,x,y,z)=>{m.position.set(x,y,z);return m;};
+const cyl=(rt,rb_,h,c,s=20)=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb_,h,s),M(c,{roughness:.9}));m.castShadow=true;m.receiveShadow=true;return m;};
+const ball=(r,c)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(r,20,14),M(c,{roughness:.95}));m.castShadow=true;return m;};
+function itemB(it){const g=new THREE.Group(),w=it.w||1,d=it.d||1,h=it.h||1;const add=m=>(g.add(m),m);
+ switch(it.t){
+  case'tvUnit':add(at(rb(w,h,d,P.wood),0,h/2,0));add(at(rb(w*.45,h*.55,.02,P.woodD,.01),-w*.24,h/2,d/2));add(at(rb(w*.45,h*.55,.02,P.woodD,.01),w*.24,h/2,d/2));break;
+  case'tv':add(at(rb(w,h,.06,0x3d4450,.03),0,h/2+.06,0));add(at(rb(w*.94,h*.88,.01,0x5a7590,.005),0,h/2+.06,.031));add(at(rb(.3,.06,.18,0x3d4450,.02),0,.03,0));break;
+  case'sofa':add(at(rb(w,.42,d,P.coral,.12),0,.21,0));add(at(rb(w,.5,.26,P.coral,.12),0,.62,-d/2+.13));
+    add(at(rb(.24,.62,d,P.coral,.1),-w/2+.12,.31,0));add(at(rb(.24,.62,d,P.coral,.1),w/2-.12,.31,0));
+    for(const s of[-1,1])add(at(rb(w/2-.26,.16,d-.32,0xf4b8a4,.07),s*(w/4-.06),.5,.06));
+    add(at(rb(.42,.36,.14,P.butter,.06),-w/2+.5,.72,-d/2+.32)).rotation.z=.15;add(at(rb(.42,.36,.14,P.mint,.06),w/2-.5,.72,-d/2+.32)).rotation.z=-.15;break;
+  case'coffee':add(at(rb(w,.08,d,P.wood,.04),0,h-.04,0));for(const[sx,sz]of[[-1,-1],[1,-1],[-1,1],[1,1]])add(at(cyl(.035,.03,h-.08,P.woodD),sx*(w/2-.1),(h-.08)/2,sz*(d/2-.08)));
+    add(at(cyl(.07,.07,.1,P.white),.15,h+.05,0));break;
+  case'rug':case'rugR':case'rugS':{const c={rug:P.sky,rugR:P.lav,rugS:P.mint}[it.t];add(at(rb(w,.02,d,c,.01),0,.01,0));add(at(rb(w*.82,.022,d*.78,0xffffff,.01),0,.012,0)).material.opacity=.0;break;}
+  case'rugO':{const m=cyl(w/2,w/2,.02,P.peach,40);add(at(m,0,.01,0));break;}
+  case'mat':add(at(rb(w,.02,d,P.woodD,.01),0,.01,0));break;
+  case'lamp':add(at(cyl(.16,.18,.04,P.woodD),0,.02,0));add(at(cyl(.02,.02,h-.3,P.woodD),0,(h-.3)/2,0));add(at(cyl(.14,.24,.3,P.butter,24),0,h-.15,0));break;
+  case'tlamp':add(at(cyl(.07,.09,.16,P.white),0,.08,0));add(at(cyl(.09,.14,.18,P.butter,24),0,h-.09,0));break;
+  case'plant':add(at(cyl(h*.18,h*.14,h*.3,P.coral),0,h*.15,0));add(at(ball(h*.26,P.leaf),0,h*.55,0));add(at(ball(h*.2,P.leafD),h*.12,h*.75,h*.05));add(at(ball(h*.18,P.leaf),-h*.1,h*.8,-h*.04));break;
+  case'bookcase':case'bookcase2':{add(at(rb(w,h,.04,P.woodD,.01),0,h/2,-d/2+.02));for(const sx of[-1,1])add(at(rb(.04,h,d,P.wood,.01),sx*(w/2-.02),h/2,0));add(at(rb(w,.04,d,P.wood,.01),0,h-.02,0));const n=4;for(let i=1;i<n;i++)add(at(rb(w-.06,.02,d-.04,P.woodD,.005),0,h*i/n,.01));
+    const cols=[P.coral,P.sky,P.butter,P.mint,P.lav];for(let i=0;i<n;i++)for(let j=0;j<5;j++){const bh=h/n*.55+(j%3)*.04;add(at(rb(.1,bh,d*.7,cols[(i+j)%5],.01),-w/2+.15+j*.15,h*i/n+bh/2+.03,.02));}break;}
+  case'counter':case'counterD':case'sink':case'stove':add(at(rb(w,h-.05,d,P.white,.03),0,(h-.05)/2,0));add(at(rb(w+.02,.05,d+.03,P.woodD,.015),0,h-.025,.0));
+    add(at(rb(w*.86,(h-.2)*(it.t==='counterD'?.3:.9),.02,P.mint,.01),0,(h-.05)*(it.t==='counterD'?.8:.47),d/2));
+    if(it.t==='sink')add(at(rb(w*.6,.03,d*.5,0xb7c4cc,.01),0,h+.002,0));
+    if(it.t==='stove')for(const[sx,sz]of[[-1,-1],[1,-1],[-1,1],[1,1]])add(at(cyl(.07,.07,.015,0x4a4f57),sx*.13,h+.008,sz*.13));break;
+  case'upper':add(at(rb(w,h,d,P.white,.03),0,h/2,0));add(at(rb(w*.86,h*.86,.02,P.mint,.01),0,h/2,d/2));break;
+  case'hood':add(at(cyl(.08,.3,h*.5,P.grey,4),0,h*.25,0)).rotation.y=Math.PI/4;add(at(rb(.16,h*.5,.16,P.grey,.02),0,h*.75,0));break;
+  case'micro':add(at(rb(w,h,d,P.grey,.03),0,h/2,0));add(at(rb(w*.6,h*.7,.01,0x5a6470,.005),-w*.1,h/2,d/2));break;
+  case'fridge':add(at(rb(w,h,d,0xdfe9ee,.06),0,h/2,0));add(at(rb(.03,h*.3,.04,P.grey,.01),-w*.1,h*.72,d/2+.02));add(at(rb(.03,h*.2,.04,P.grey,.01),-w*.1,h*.3,d/2+.02));
+    add(at(rb(w*.98,.015,.01,0xc4d1d8,.003),0,h*.45,d/2));break;
+  case'table':add(at(rb(w,.07,d,P.wood,.03),0,h-.035,0));for(const[sx,sz]of[[-1,-1],[1,-1],[-1,1],[1,1]])add(at(cyl(.04,.035,h-.07,P.woodD),sx*(w/2-.1),(h-.07)/2,sz*(d/2-.1)));
+    add(at(cyl(.08,.06,.14,P.white),0,h+.07,0));add(at(ball(.08,P.coral),0,h+.18,0));break;
+  case'chair':add(at(rb(.42,.06,.42,P.wood,.02),0,.46,0));add(at(rb(.42,.42,.05,P.wood,.02),0,.7,-.19));add(at(rb(.36,.05,.36,P.butter,.02),0,.5,.01));
+    for(const[sx,sz]of[[-1,-1],[1,-1],[-1,1],[1,1]])add(at(cyl(.025,.02,.44,P.woodD),sx*.17,.22,sz*.17));break;
+  case'bedD':case'bedS':{const c=it.t==='bedD'?P.sky:P.lav;add(at(rb(w,.3,d,P.wood,.06),0,.15,0));add(at(rb(w,h,.12,P.wood,.06),0,h/2,-d/2+.06));
+    add(at(rb(w-.08,.18,d-.18,P.white,.08),0,.38,.04));add(at(rb(w-.04,.08,d*.62,c,.04),0,.48,d*.18));
+    const np=it.t==='bedD'?2:1;for(let i=0;i<np;i++)add(at(rb(np===2?w/2-.15:w-.3,.12,.34,P.white,.06),np===2?(i?1:-1)*(w/4-.02):0,.52,-d/2+.36));break;}
+  case'night':add(at(rb(w,h,d,P.wood,.04),0,h/2,0));add(at(rb(w*.8,h*.35,.02,P.woodD,.01),0,h*.7,d/2));break;
+  case'ward':add(at(rb(w,h,d,P.cream,.04),0,h/2,0));add(at(rb(.012,h*.94,.02,P.woodD,.004),0,h/2,d/2));
+    for(const s of[-1,1])add(at(rb(.03,.22,.04,P.woodD,.01),s*.06,h*.55,d/2+.02));add(at(rb(w,.08,d,P.peach,.03),0,h+.04,0));break;
+  case'drawers':add(at(rb(w,h,d,P.wood,.04),0,h/2,0));for(let i=0;i<3;i++)add(at(rb(w*.85,h*.26,.02,P.peach,.01),0,h*(.18+i*.31),d/2));break;
+  case'coat':add(at(cyl(.18,.2,.04,P.woodD),0,.02,0));add(at(cyl(.025,.025,h,P.woodD),0,h/2,0));add(at(ball(.16,P.coral),.12,h-.25,0));add(at(ball(.13,P.butter),-.1,h-.35,.05));break;
+  case'mirror':add(at(rb(w,h,.04,P.wood,.05),0,h/2,0));add(at(rb(w*.84,h*.9,.01,0xdcecf3,.03),0,h/2,.025));break;
+  case'tub':add(at(rb(w,h,d,P.white,.18),0,h/2,0));add(at(rb(w-.16,.02,d-.16,0x9fd3e8,.08),0,h-.04,0));add(at(ball(.08,P.butter),.3,h,0));break;
+  case'toilet':add(at(rb(.4,.42,.5,P.white,.16),0,.21,.06));add(at(rb(.42,.04,.46,P.white,.15),0,.44,.06));add(at(rb(.4,.4,.18,P.white,.05),0,.55,-.22));break;
+  case'basin':add(at(rb(w,h-.12,d,P.mint,.04),0,(h-.12)/2,0));add(at(rb(w,.12,d,P.white,.05),0,h-.06,0));add(at(cyl(.02,.02,.12,P.grey),0,h+.06,-d/2+.08));break;
+  case'washer':add(at(rb(w,h,d,P.white,.06),0,h/2,0));{const m=cyl(.2,.2,.02,0x9fb7c6,28);m.rotation.x=Math.PI/2;add(at(m,0,h*.45,d/2));}break;
+  case'desk':add(at(rb(w,.05,d,P.wood,.02),0,h-.025,0));add(at(rb(.05,h-.05,d-.04,P.woodD,.01),-w/2+.04,(h-.05)/2,0));add(at(rb(.35,h-.05,d-.04,P.wood,.02),w/2-.2,(h-.05)/2,0));
+    add(at(rb(.3,.2,.02,0x3d4450,.01),-.15,h+.12,-d/4));add(at(cyl(.06,.06,.12,P.coral),.25,h+.06,0));break;
+  case'dchair':add(at(cyl(.22,.22,.08,P.lav),0,.48,0));add(at(rb(.4,.4,.06,P.lav,.03),0,.75,-.18));add(at(cyl(.03,.03,.4,P.grey),0,.24,0));add(at(cyl(.22,.22,.03,P.grey,5),0,.03,0));break;
+  case'deck':add(at(rb(w,h,d,P.woodD,.02),0,h/2,0));for(let i=0;i<7;i++)add(at(rb(w,.01,.02,0x9b7552,.003),0,h+.001,-d/2+.1+i*d/7));break;
+  case'treeA':case'treeB':case'treeC':{const c=it.t==='treeB'?P.leafD:P.leaf;add(at(cyl(.12*h/4,.18*h/4,h*.45,P.trunk),0,h*.22,0));
+    const k=it.t==='treeC'?.9:1;add(at(ball(h*.24*k,c),0,h*.6,0));add(at(ball(h*.18*k,P.leafD),h*.16,h*.52,h*.05));add(at(ball(h*.17*k,c),-h*.14,h*.5,-h*.06));add(at(ball(h*.15*k,P.leaf),0,h*.8,.02));break;}
+  case'bench':add(at(rb(w,.06,d,P.wood,.02),0,h-.03,0));add(at(rb(w,.3,.05,P.wood,.02),0,h+.15,-d/2+.03));for(const s of[-1,1])add(at(rb(.06,h,d,P.woodD,.02),s*(w/2-.1),h/2,0));break;
+  case'pot':add(at(cyl(h*.45,h*.32,h*.6,P.coral),0,h*.3,0));add(at(ball(h*.4,P.leaf),0,h*.75,0));add(at(ball(.07,0xff8fa3),.1,h*1.0,.05));add(at(ball(.06,P.butter),-.1,h*.95,-.05));break;
+  case'rock':{const m=new THREE.Mesh(new THREE.DodecahedronGeometry(h*.6),M(P.stone));m.scale.y=.6;m.castShadow=true;add(at(m,0,h*.3,0));break;}
+  case'flowerR':case'flowerY':case'flowerP':{const c={flowerR:0xff8fa3,flowerY:0xffd66b,flowerP:0xc9a3f0}[it.t];add(at(cyl(.012,.012,h,P.leafD,6),0,h/2,0));add(at(ball(.07,c),0,h,0));add(at(ball(.035,P.butter),0,h+.05,.03));break;}
+  case'bush':add(at(ball(h*.55,P.leaf),0,h*.4,0));add(at(ball(h*.42,P.leafD),h*.35,h*.3,0));add(at(ball(h*.4,P.leaf),-h*.32,h*.32,.05));break;
+  case'step':{const m=cyl(w*.42,w*.45,.06,P.stone,9);m.scale.z=d/w*1.6;add(at(m,0,.03,0));break;}
+  case'fence':add(at(rb(w,.07,.06,P.white,.02),0,h*.45,0));add(at(rb(w,.07,.06,P.white,.02),0,h*.8,0));for(const s of[-1,1])add(at(rb(.09,h,.09,P.white,.03),s*w/2,h/2,0));break;
+  case'gate':add(at(rb(w*.9,h*.6,.05,P.peach,.03),0,h*.5,0));for(const s of[-1,1])add(at(rb(.12,h,.12,P.white,.04),s*w/2,h/2,0));break;
+  default:return null;}
+ return g;}
+
+/* ---------- 짓기 ---------- */
+let shell=null;const labels=[];
+async function build(){
+  furn.clear();if(shell)world.remove(shell);shell=buildShell();world.add(shell);
+  for(const it of ITEMS){if(it.skip)continue;const o=itemB(it);if(!o)continue;
+    const holder=new THREE.Group();holder.add(o);holder.position.set(it.x,(it.y||0)+(it.x>=0&&it.x<=12&&it.z>=0&&it.z<=9?.26:0),it.z);holder.rotation.y=(it.r||0)*Math.PI/180;furn.add(holder);}
+  updateWalls(true);
+}
+
+/* ---------- 카메라 · 전체보기 · 방 이동 ----------
+   휴대폰 세로 화면 재제작(10/27). 바뀐 것은 '보는 방법'뿐이고 집 생김새(B안)는 그대로입니다.
+   핵심 셋:
+   ① 화면 크기를 직접 재서, 집의 꼭짓점 8개가 화면에 꽉 들어가는 거리를 매번 다시 계산합니다.
+      (예전에는 거리를 어림수로 박아 두어 세로 화면에서 집이 작게 나왔습니다)
+   ② 세로 화면에서는 집의 긴 변(12m)이 화면 세로 쪽으로 오도록 보는 방향을 돌립니다.
+      가로로 긴 집을 세로 화면에서 정면으로 보면 좌우 폭에 걸려 집이 작아질 수밖에 없습니다.
+   ③ 위 제목 띠와 아래 버튼 띠를 피하되 위아래 여백을 같게 주어 집이 한가운데 옵니다. */
+function boxPts(b){const a=[];for(const x of[b.x0,b.x1])for(const y of[b.y0,b.y1])for(const z of[b.z0,b.z1])a.push(new THREE.Vector3(x,y,z));return a;}
+/* 집 건물의 경계상자(바닥 받침~벽 꼭대기). 마당은 넓어서 전체보기 기준에 넣지 않습니다 */
+const HOUSE_PTS=boxPts({x0:0,x1:12,y0:0,y1:2.76,z0:0,z1:9});
+const probe=new THREE.PerspectiveCamera(38,1,.1,600);
+
+/* 세로 화면인가(가로보다 길면 세로로 봅니다) */
+const isPortrait=()=>innerHeight>innerWidth*1.05;
+/* 전체보기 후보 각도·화각 목록.
+   화면 모양에 따라 집이 가장 크게 보이는 조합이 다르므로, 고정값을 쓰지 않고
+   아래 후보를 모두 실제로 투영해 재 보고 조건에 맞는 것을 고릅니다.
+   pol(올려다보는 각) 클수록 비스듬히 서서 벽면이 보이고, 작을수록 위에서 눌러 봅니다.
+   fov(화각) 작을수록 멀리서 당겨 크게 보이지만 원근이 사라져 평면 도면처럼 납작해집니다.
+
+   ※ 세로 화면 실측(2026-10-27, 390x844) — 두 기준이 서로 밀어냅니다.
+     집 폭(12m)이 화면 가로를 99.5%로 꽉 채우기 때문에, 세로를 더 채우려면
+     기울기를 낮춰 집을 위에서 눌러 보는 수밖에 없습니다.
+       기울기 0.40 → 세로 60.0% (기준 통과, 그러나 평면 도면처럼 보임)
+       기울기 0.62 → 세로 53.6% (벽면·가구 옆면이 보여 인형의 집으로 읽힘)
+     대각선(45도)으로 돌리는 방법도 재 봤으나, 집 대각선 폭(15m)이 가로에 더 걸려
+     세로 점유가 오히려 떨어졌습니다(60% 넘는 조합 0개).
+     '인형의 집 보기'가 이 화면의 기능 정의이므로 입체감을 우선합니다. */
+function overviewCands(){
+  const P=isPortrait();
+  const pols=P?[.58,.60,.62,.64]:[.40,.48,.56,.62,.68];
+  const fovs=P?[18,20,22]:[24,27,30,33];
+  /* 세로 화면은 집의 긴 변(12m)을 화면 세로로 세우는 방위각(±90도)이 유리합니다 */
+  const azs=P?[Math.PI/2,-Math.PI/2]:[0,.35,-.35];
+  const out=[];
+  for(const pol of pols)for(const fov of fovs)for(const az of azs)out.push({pol,az,fov});
+  return out;
+}
+/* 방 하나를 볼 때의 각도 — 방 안이 보이도록 더 낮게 섭니다 */
+function roomShot(){return isPortrait()?{pol:.62,az:Math.PI/2,fov:32}:{pol:.70,az:0,fov:34};}
+
+/* 위·아래 띠를 피한 '집을 놓을 자리'. 띠 바로 아래/위까지 쓰되 2px 숨만 띄웁니다.
+   위아래 띠 높이가 다르면 그만큼 다르게 잡아, 남는 공간을 한 쪽도 버리지 않습니다. */
+function safeArea(){
+  const W=innerWidth,H=innerHeight;
+  const t=document.querySelector('.top'),b=document.querySelector('.rooms');
+  const th=t?t.getBoundingClientRect().height:40,bh=b?b.getBoundingClientRect().height:70;
+  return {x0:1,x1:W-1,y0:th+2,y1:H-bh-2};
+}
+/* 어떤 거리에서 봤을 때 대상이 화면에서 차지하는 네모(픽셀) */
+function screenRect(pts,target,dist,pol,az,fov){
+  const W=innerWidth,H=innerHeight;
+  probe.fov=fov;probe.aspect=W/H;probe.updateProjectionMatrix();
+  probe.position.setFromSphericalCoords(dist,pol,az).add(target);
+  probe.lookAt(target);probe.updateMatrixWorld();
+  let x0=1/0,x1=-1/0,y0=1/0,y1=-1/0;
+  for(const p of pts){const v=p.clone().project(probe);
+    if(v.z>=1)return null;
+    const px=(v.x+1)/2*W,py=(1-v.y)/2*H;
+    if(px<x0)x0=px;if(px>x1)x1=px;if(py<y0)y0=py;if(py>y1)y1=py;}
+  return {x0,x1,y0,y1};
+}
+/* 대상이 자리 안에 꼭 들어가는 가장 가까운 거리를 반씩 좁혀 가며 찾습니다 */
+function fitDist(pts,target,pol,az,fov,safe){
+  const ok=d=>{const r=screenRect(pts,target,d,pol,az,fov);
+    return !!r&&r.x0>=safe.x0&&r.x1<=safe.x1&&r.y0>=safe.y0&&r.y1<=safe.y1;};
+  let lo=1,hi=420;if(!ok(hi))return hi;
+  for(let i=0;i<42;i++){const m=(lo+hi)/2;if(ok(m))hi=m;else lo=m;}
+  return hi;
+}
+
+const VIEW_ALL={t:new THREE.Vector3(6,1.1,4.5),dist:30,pol:.80,az:-.32,fov:38};
+let anim=null,overview=true;  /* 전체보기 상태면 화면 크기가 바뀔 때(가로·세로 돌림) 다시 맞춘다 */
+function applyFov(f){if(Math.abs(cam.fov-f)>.01){cam.fov=f;cam.updateProjectionMatrix();}}
+function goTo(t,dist,pol,az,fov){const s0={t:ctl.target.clone(),p:cam.position.clone(),fov:cam.fov};
+  const p=new THREE.Vector3().setFromSphericalCoords(dist,pol,az).add(t);anim={s0,t1:t.clone(),p1:p,fov1:fov,k:0};}
+/* 전체보기 구도를 지금 화면 크기에 맞춰 다시 계산.
+   후보를 모두 투영해 재 보고, 집이 화면 세로를 가장 많이 채우는 조합을 고릅니다.
+   후보 목록 자체를 '인형의 집으로 읽히는 기울기' 범위로 좁혀 두었으므로(위 주석 참고),
+   여기서는 그 범위 안에서 가장 크게 보이는 것을 고르면 됩니다. */
+function calcViewAll(){
+  const safe=safeArea();
+  let best=null,bestFill=null;
+  for(const c of overviewCands()){
+    const d=fitDist(HOUSE_PTS,VIEW_ALL.t,c.pol,c.az,c.fov,safe);
+    const r=screenRect(HOUSE_PTS,VIEW_ALL.t,d,c.pol,c.az,c.fov);
+    if(!r)continue;
+    const v=(r.y1-r.y0)/innerHeight;
+    const cand={...c,dist:d,v};
+    if(!bestFill||v>bestFill.v)bestFill=cand;                    /* 가장 크게 보이는 것 */
+  }
+  const pick=bestFill;
+  if(pick){VIEW_ALL.pol=pick.pol;VIEW_ALL.az=pick.az;VIEW_ALL.fov=pick.fov;VIEW_ALL.dist=pick.dist;}
+  ctl.maxDistance=Math.max(70,VIEW_ALL.dist*1.5);
+  return VIEW_ALL;
+}
+function viewAll(instant){overview=true;const v=calcViewAll();
+  if(instant){applyFov(v.fov);ctl.target.copy(v.t);cam.position.copy(new THREE.Vector3().setFromSphericalCoords(v.dist,v.pol,v.az).add(v.t));return;}
+  goTo(v.t,v.dist,v.pol,v.az,v.fov);}
+function roomDist(r,s){const pts=boxPts({x0:r.x0,x1:r.x1,y0:0,y1:r.id==='yard'?1.2:2.4,z0:r.z0,z1:r.z1});
+  return {pts,dist:Math.max(5,fitDist(pts,roomTarget(r),s.pol,s.az,s.fov,safeArea()))};}
+function roomTarget(r){return new THREE.Vector3((r.x0+r.x1)/2,r.id==='yard'?.3:.8,(r.z0+r.z1)/2);}
+function focusRoom(r){overview=false;const s=roomShot();const t=roomTarget(r);
+  goTo(t,roomDist(r,s).dist,s.pol,s.az,s.fov);}
+const btnAll=document.getElementById('all');const roomBar=document.getElementById('rooms');
+function setActive(b){for(const x of roomBar.children)x.classList.toggle('on',x===b);}
+btnAll.onclick=()=>{viewAll();setActive(btnAll);};
+for(const r of ROOMS){const b=document.createElement('button');b.textContent=r.n;b.onclick=()=>{focusRoom(r);setActive(b);};roomBar.appendChild(b);r.btn=b;
+  const l=document.createElement('div');l.className='lbl';l.textContent=r.n;l.onclick=()=>{focusRoom(r);setActive(b);};document.body.appendChild(l);
+  labels.push({el:l,p:new THREE.Vector3((r.x0+r.x1)/2,r.id==='yard'?1.2:2.9,r.id==='yard'?12.6:(r.z0+r.z1)/2)});}
+
+/* 인형의 집: 바라보는 곳보다 카메라 쪽에 있는 벽은 낮춘다 */
+/* 멀리서 볼 때(전체보기)는 안쪽 벽을 허리 높이로 낮춰 방 배치가 한눈에 보이게 한다.
+   단 휴대폰 세로 전체보기는 예외다(2026-10-27): 세로 화면은 집을 60% 이상 채우려면
+   거의 내려다보는 각도가 되는데, 그 상태에서 벽까지 낮추면 벽면이 사라져 평면 도면처럼 보인다.
+   그래서 세로 전체보기에서는 안쪽 벽을 세워 둬 벽면·가구 옆면이 보이게 한다. */
+function updateWalls(force){if(!shell)return;const v=new THREE.Vector3().subVectors(cam.position,ctl.target);
+  const far=v.length()>17&&!(overview&&isPortrait());v.y=0;v.normalize();
+  for(const w of shell.userData.walls){const d=(w.cx-ctl.target.x)*v.x+(w.cz-ctl.target.z)*v.z;const st=d>.6?'low':(far&&w.inner)?'mid':'full';
+    if(st!==w.st||force){w.st=st;w.full.visible=st==='full';w.low.visible=st==='low';w.mid.visible=st==='mid';}}}
+
+function resize(){const w=innerWidth,h=innerHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();
+  /* 화면이 바뀌면(가로·세로 돌림) 전체보기 구도를 그 크기에 맞게 다시 계산한다 */
+  if(overview&&!anim)viewAll(true);}
+addEventListener('resize',resize);
+ctl.addEventListener('start',()=>{anim=null;overview=false;});
+const tmp=new THREE.Vector3();
+function loop(){requestAnimationFrame(loop);
+  if(anim){anim.k=Math.min(1,anim.k+.045);const e=1-Math.pow(1-anim.k,3);ctl.target.lerpVectors(anim.s0.t,anim.t1,e);cam.position.lerpVectors(anim.s0.p,anim.p1,e);
+    if(anim.fov1!=null)applyFov(anim.s0.fov+(anim.fov1-anim.s0.fov)*e);
+    if(anim.k>=1)anim=null;}
+  ctl.update();updateWalls();R.render(scene,cam);
+  for(const L of labels){tmp.copy(L.p).project(cam);const vis=tmp.z<1&&Math.abs(tmp.x)<1.1&&Math.abs(tmp.y)<1.1;
+    L.el.classList.toggle('hide',!vis);L.el.style.left=((tmp.x+1)/2*innerWidth)+'px';L.el.style.top=((1-tmp.y)/2*innerHeight)+'px';}}
+
+/* B안 확정(대표 10/27): 시안 고르기 없이 바로 B안으로 짓습니다 */
+resize();viewAll(true);
+const q=new URLSearchParams(location.search);
+document.getElementById('msg').style.display='grid';
+await build();
+document.getElementById('msg').style.display='none';
+/* 글꼴이 늦게 깔리면 띠 높이가 바뀌므로, 다 깔린 뒤 한 번 더 맞춥니다 */
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(overview&&!anim)viewAll(true);});
+if(q.get('room')){const r=ROOMS.find(x=>x.id===q.get('room'));if(r){overview=false;const s=roomShot();
+  applyFov(s.fov);ctl.target.copy(roomTarget(r));
+  cam.position.copy(new THREE.Vector3().setFromSphericalCoords(roomDist(r,s).dist,s.pol,s.az).add(ctl.target));setActive(r.btn);}}
+setTimeout(()=>{document.getElementById('hint').style.opacity=0;},4500);
+loop();
+
+/* 검사용: 집이 화면에서 차지하는 비율과 가림 여부를 숫자로 돌려줍니다(사람 눈 대신 기계로 확인) */
+window.__measure=()=>{const W=innerWidth,H=innerHeight;
+  let x0=1/0,x1=-1/0,y0=1/0,y1=-1/0;
+  for(const p of HOUSE_PTS){const v=p.clone().project(cam);const px=(v.x+1)/2*W,py=(1-v.y)/2*H;
+    if(px<x0)x0=px;if(px>x1)x1=px;if(py<y0)y0=py;if(py>y1)y1=py;}
+  const top=document.querySelector('.top').getBoundingClientRect();
+  const rooms=document.querySelector('.rooms').getBoundingClientRect();
+  const hint=document.getElementById('hint').getBoundingClientRect();
+  const btns=[...document.querySelectorAll('.rooms button')].map(b=>{const g=b.getBoundingClientRect();
+    return {t:b.textContent,x:Math.round(g.left),y:Math.round(g.top),w:Math.round(g.width),h:Math.round(g.height),
+            inView:g.left>=-1&&g.right<=W+1&&g.top>=-1&&g.bottom<=H+1,fs:getComputedStyle(b).fontSize};});
+  const lbls=[...document.querySelectorAll('.lbl')].map(l=>{const g=l.getBoundingClientRect();
+    return {t:l.textContent,hidden:l.classList.contains('hide'),x:Math.round(g.left),y:Math.round(g.top),fs:getComputedStyle(l).fontSize};});
+  return {screen:[W,H],portrait:isPortrait(),fov:+cam.fov.toFixed(1),dist:+cam.position.distanceTo(ctl.target).toFixed(1),
+    pol:+VIEW_ALL.pol.toFixed(2),az:+VIEW_ALL.az.toFixed(2),
+    house:{x0:Math.round(x0),x1:Math.round(x1),y0:Math.round(y0),y1:Math.round(y1),
+           vPct:+(((y1-y0)/H)*100).toFixed(1),hPct:+(((x1-x0)/W)*100).toFixed(1),
+           fullyVisible:x0>=0&&x1<=W&&y0>=0&&y1<=H},
+    overlap:{topBand:y0<top.bottom,bottomBand:y1>rooms.top,
+             hintOverHouse:!(hint.bottom<y0||hint.top>y1||hint.right<x0||hint.left>x1)},
+    bands:{top:Math.round(top.height),rooms:Math.round(rooms.height)},
+    btns,lbls,titleFs:getComputedStyle(document.querySelector('.title')).fontSize};};
+/* 진단용: 각도·화각 후보를 넓게 훑어 세로 점유 상위를 돌려줍니다(한계가 어디인지 수치로 보려고) */
+window.__scan=(n)=>{const safe=safeArea(),out=[];
+  const pols=[];for(let p=.10;p<=.70;p+=.02)pols.push(+p.toFixed(2));
+  const fovs=[10,12,14,16,18,20,23,26,30];
+  const azs=[Math.PI/2,-Math.PI/2,Math.PI/2-.3,Math.PI/2+.3,0,.4,-.4,Math.PI/4,Math.PI*3/4,-Math.PI/4,-Math.PI*3/4,.6,1.0,1.2,2.0,2.4];
+  for(const pol of pols)for(const fov of fovs)for(const az of azs){
+    const d=fitDist(HOUSE_PTS,VIEW_ALL.t,pol,az,fov,safe);
+    const r=screenRect(HOUSE_PTS,VIEW_ALL.t,d,pol,az,fov);
+    if(!r)continue;
+    out.push({pol,az:+az.toFixed(2),fov,dist:+d.toFixed(1),
+      v:+(((r.y1-r.y0)/innerHeight)*100).toFixed(1),h:+(((r.x1-r.x0)/innerWidth)*100).toFixed(1)});}
+  out.sort((a,b)=>b.v-a.v);return n===0?out:out.slice(0,n||12);};
+/* 진단용: 기울기·화각을 손으로 지정해 그 구도로 바로 보여 줍니다(비교 캡처용).
+   거리는 집 전체가 화면에 들어오도록 fitDist로 다시 계산합니다 */
+window.__force=(pol,fov)=>{const az=Math.PI/2,safe=safeArea();
+  const d=fitDist(HOUSE_PTS,VIEW_ALL.t,pol,az,fov,safe);
+  VIEW_ALL.pol=pol;VIEW_ALL.az=az;VIEW_ALL.fov=fov;VIEW_ALL.dist=d;
+  anim=null;overview=true;applyFov(fov);
+  ctl.maxDistance=Math.max(70,d*1.5);
+  ctl.target.copy(VIEW_ALL.t);
+  cam.position.copy(new THREE.Vector3().setFromSphericalCoords(d,pol,az).add(VIEW_ALL.t));
+  ctl.update();updateWalls(true);};
+window.__ready=true;
+</script>
+</body>
+</html>
